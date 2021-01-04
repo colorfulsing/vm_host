@@ -18,7 +18,7 @@ Now add SELinux file type label to allow `virt-manager` to access and mount it:
 semanage fcontext -a -t virt_home_t "/vm_shared/my_vm_shared_dir(/*)?"
 
 # Apply the new context policy to the shared directory.
-restorecon -R /vm_shared/kernel_build
+restorecon -R /vm_shared/my_vm_shared_dir
 ```
 
 Repeat to add any new shared directories.
@@ -28,6 +28,16 @@ Now add the new filesystem hardware into the virtual machine by clicking on `+ A
 ![](https://github.com/colorfulsing/vm_host/raw/main/images/shared_dir_filesystem.png)
 
 You can set ``Export filesystem as readonly mount` option to make it read only.
+
+Here is the generated XML in case you want to add it manually to your VM:
+
+```xml
+<filesystem type="mount" accessmode="mapped">
+  <source dir="/vm_shared/my_vm_shared_dir"/>
+  <target dir="/vm_shared/my_vm_shared_dir"/>
+  <alias name="fs0"/>
+</filesystem>
+```
 
 ### Guest steps
 
