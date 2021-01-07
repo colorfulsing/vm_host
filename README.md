@@ -27,7 +27,7 @@ Now add the new filesystem hardware into the virtual machine by clicking on `+ A
 
 ![](https://github.com/colorfulsing/vm_host/raw/main/images/shared_dir_filesystem.png)
 
-You can set ``Export filesystem as readonly mount` option to make it read only.
+You can set `Export filesystem as readonly mount` option to make it read only.
 
 Here is the generated XML in case you want to add it manually to your VM:
 
