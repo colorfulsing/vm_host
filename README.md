@@ -73,9 +73,22 @@ sudo mount -a
 
 And done, now you can share your files between your Host and Guest VM.
 
-## PCIe Pass-through
+## PCIe Passthrough
 
-We will need several things for PCIe pass-through, one of those important things is to make sure that the PCIe device we want to pass-through is on it's own IOMMU group, or in case there are more PCIe devices on the same group, to be 100% sure we want to pass-through those devices too as you can only pass a IOMMU group as a whole.
+### Good stuff to read about
+
+Here are some good guides and reading material to increase your knowledge and also to take a look over other ways to make the PCIe passthrough and some other stuff:
+
+* General PCI Passthrough - [Arch linux's PCI passthrough via OVMF](https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF "Arch linux's PCI passthrough via OVMF")
+* Single GPU passthrough guide - [Karuri's vfio guide](https://gitlab.com/Karuri/vfio "Karuri's VFIO Single GPU Passthrough Configuration"). *(Totally recommend you to read this one)*
+* Performance tunning - [bryansteiner's GPU passthrough tutorial](https://github.com/bryansteiner/gpu-passthrough-tutorial#----acs-override-patch-optional bryansteiner's GPU passthrough tutorial). *(Totally recommend you to read this one)*
+* Fedora 32 with GPU passthrough - [marzukia's guide](https://marzukia.github.io/post/fedora-32-and-gpu-passthrough-vfio/ "marzukia's Fedora 32 and GPU Passthrough").
+* Fedora 33 with GPU passthrough - [wendell's guide](https://forum.level1techs.com/t/fedora-33-ultimiate-vfio-guie-for-2020-2021-wip/163814 "wendell's Fedora 33: Ultimiate VFIO Guie for 2020/2021 [WIP]").
+* LVM stuff - [Travis Johnson's LVM storage guide](https://bashtheshell.com/guide/configuring-lvm-storage-for-qemukvm-vms-using-virt-manager-on-centos-7/ "Travis Johnson's Configuring LVM Storage for QEMU/KVM VMs Using virt-manager on CentOS 7")
+
+### My Fedora PCIe passthrough guide
+
+We will need several things for PCIe passthrough, one of those important things is to make sure that the PCIe device we want to passthrough is on it's own IOMMU group, or in case there are more PCIe devices on the same group, to be 100% sure we want to passthrough those devices too as you can only pass a IOMMU group as a whole.
 
 Therefore, in case it is impossible to pass all devices on the IOMMU group because it would affect the host stability, or we simply are not happy with passing all devices on the IOMMU group, we can also use [ACS patch](https://aur.archlinux.org/cgit/aur.git/tree/add-acs-overrides.patch?h=linux-vfio "ACS patch") to split the specific devices we want into it's own IOMMU group. If this is the case, check the [Kernel with ACS patch](#kernel-with-acs-patch "Kernel with ACS patch") section.
 
@@ -88,17 +101,38 @@ IOMMU Group 8:
         01:00.1 Audio device [0403]: NVIDIA Corporation Device [10de:10fa] (rev a1)
 ```
 
-TODO: Add step by step pass-through setup here
+Now add the IOMMU grub parameters according to your CPU and system configuration:
+
+* `intel_iommu=on` for **Intel CPUs** (VT-d) or `amd_iommu=on` for **AMD CPUs** (AMD-Vi).
+* `iommu=pt` to prevent Linux from touching devices which cannot be passed through.
+* `pcie_acs_override=downstream` only when using a kernel with ACS patch.
+* `rd.driver.pre=vfio-pc` to force VFIO kernel module to load.
+
+For example, when using `Fedora 33 + UEFI + AMD CPU + ACS override` then the grub parameters on my `/etc/default/grub` would be:
+
+```bash
+GRUB_CMDLINE_LINUX="rhgb quiet iommu=pt amd_iommu=on pcie_acs_override=downstream rd.driver.pre=vfio-pci"
+```
+
+
+
+TODO: Add step by step passthrough setup here
 
 ### Kernel with ACS patch
 
-We need a kernel with ACS patch applied in order to isolate PCIe devices into it's own IOMMU group and be able to pass-through these devices into the VM, like a graphics card and a PCIe to USB extender to setup a gaming VM.
+We need a kernel with ACS patch applied in order to isolate PCIe devices into it's own IOMMU group and be able to passthrough these devices into the VM, like a graphics card and a PCIe to USB extender to setup a gaming VM.
 
 There are several ways to acquire a kernel with ACS patch, but these ones that I found useful are:
 
 * Using [`jlay` Fedora kernel repository](#using-jlay-repository "Using jlay Fedora kernel repository")
 * Recompile the kernel using docker(#recompile-the-kernel-using-docker "Recompile the kernel using docker")
 * [Recompile the kernel manually](#recompile-the-kernel-manually "Recompile the kernel manually")
+
+Once you have applied ACS patch, next step is to add `pcie_acs_override=downstream` along your other IOMMU kernel parameters to the grub default grub parameters.
+
+Using `downstream` value on `pcie_acs_override` parameter should be more than enough for all your needs as it will split all components on different IOMMU groups, but you can also use other values as you need or mix any of them using `,` as separator. Check Arch linux's [PCI passthrough via OVMF](https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF#Bypassing_the_IOMMU_groups_%28ACS_override_patch%29 "Bypassing the IOMMU groups") for more information about it.
+
+> **IMPORTANT:** Make sure you understand the [potential risks](https://vfio.blogspot.com/2014/08/iommu-groups-inside-and-out.html "IOMMU groups inside and out") of overriding the IOMMU groups before playing with this.
 
 #### Using jlay Fedora kernel repository
 
@@ -139,9 +173,9 @@ Check this [script](https://github.com/colorfulsing/build_fedora_kernel/blob/mai
 * Error checks.
 * Docker build mode.
 
-**NOTE1:** According to `dglb99`'s [post](https://forum.level1techs.com/t/trying-to-compile-acs-override-patch-and-got-stuck-fedora-33/163658/6), the script used the rebuild commands from [this](https://passthroughpo.st/agesa_fix_fedora/ "The Passthrough POST - HOWTO: Patch Fedora Kernel (feat. AGESA 0.0.7.2+ Fix)") guide on the original script.
+> **NOTE<sup>1</sup>:** According to `dglb99`'s [post](https://forum.level1techs.com/t/trying-to-compile-acs-override-patch-and-got-stuck-fedora-33/163658/6), the script used the rebuild commands from [this](https://passthroughpo.st/agesa_fix_fedora/ "The Passthrough POST - HOWTO: Patch Fedora Kernel (feat. AGESA 0.0.7.2+ Fix)") guide on the original script.
 
-**NOTE2:** `dglb99`'s original script also created a user called `mockbuild` which I would assume it was intended to be used along `mock` package to build the kernel but it wasn't used at the end and was left as a leftover on the script, so I removed it.
+> **NOTE<sup>2</sup>:** `dglb99`'s original script also created a user called `mockbuild` which I would assume it was intended to be used along `mock` package to build the kernel but it wasn't used at the end and was left as a leftover on the script, so I removed it.
 
 You can either open the script as text to execute each command individually for a more custom and controlled experience in case you want to do extra stuff, or you can simply execute it if you are looking for a one click installing everything on your system, like this:
 
