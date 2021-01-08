@@ -114,7 +114,64 @@ For example, when using `Fedora 33 + UEFI + AMD CPU + ACS override` then the gru
 GRUB_CMDLINE_LINUX="rhgb quiet iommu=pt amd_iommu=on pcie_acs_override=downstream rd.driver.pre=vfio-pci"
 ```
 
+/usr/lib/dracut/modules.d/module-setup.sh
 
+```bash
+#!/usr/bin/bash
+check() {
+  return 0
+}
+depends() {
+  return 0
+}
+install() {
+  declare moddir=${moddir}
+  inst_hook pre-udev 00 "$moddir/vfio-pci-override.sh"
+}
+```
+
+```bash
+mkdir /usr/lib/dracut/modules.d/20vfi
+```
+
+These values usually use a `0000` prefix, but you can check `/sys/bus/pci/devices` just to be sure this is the right prefix, otherwise, change it to whatever it is.
+
+0000:01:00.0 0000:01:00.1
+
+/usr/sbin/vfio-pci-override.sh
+
+```sh
+#!/bin/sh
+PREREQS=""
+DEVS="0000:01:00.0 0000:01:00.1"
+
+for DEV in $DEVS; do
+  echo "vfio-pci" > /sys/bus/pci/devices/$DEV/driver_override
+done
+
+modprobe -i vfio-pc
+```
+
+```bash
+ln -s /usr/sbin/vfio-pci-override.sh /usr/lib/dracut/modules.d/30vfio/vfio-pci-override.sh
+```
+
+/etc/dracut.conf.d/vfio.conf
+
+```bash
+dd_dracutmodules+=" vfio "
+force_drivers+=" vfio vfio-pci vfio_virqfd vfio_iommu_type1 "
+install_items="/usr/sbin/vfio-pci-override.sh /usr/bin/find /usr/bin/dirname"
+```
+
+```bash
+dracut -fv
+grub2-mkconfig -o /boot/efi/EFI/fedora/grub.cfg
+```
+
+```bash
+sudo lsinitrd | grep vfio
+```
 
 TODO: Add step by step passthrough setup here
 
@@ -173,7 +230,7 @@ Check this [script](https://github.com/colorfulsing/build_fedora_kernel/blob/mai
 * Error checks.
 * Docker build mode.
 
-> **NOTE<sup>1</sup>:** According to `dglb99`'s [post](https://forum.level1techs.com/t/trying-to-compile-acs-override-patch-and-got-stuck-fedora-33/163658/6), the script used the rebuild commands from [this](https://passthroughpo.st/agesa_fix_fedora/ "The Passthrough POST - HOWTO: Patch Fedora Kernel (feat. AGESA 0.0.7.2+ Fix)") guide on the original script.
+> **NOTE<sup>1</sup>:** According to `dglb99`'s [post](https://forum.level1techs.com/t/trying-to-compile-acs-override-patch-and-got-stuck-fedora-33/163658/6), the script was created using the rebuild commands from [this](https://passthroughpo.st/agesa_fix_fedora/ "The Passthrough POST - HOWTO: Patch Fedora Kernel (feat. AGESA 0.0.7.2+ Fix)") guide on the original script.
 
 > **NOTE<sup>2</sup>:** `dglb99`'s original script also created a user called `mockbuild` which I would assume it was intended to be used along `mock` package to build the kernel but it wasn't used at the end and was left as a leftover on the script, so I removed it.
 
