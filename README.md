@@ -226,9 +226,9 @@ $ lspci -nnk | grep -B2 vfio
         Kernel driver in use: vfio-pci
 ```
 
-## USB PCI Passthrough
+## USB PCI Passthrough guide
 
-The vfio-pci driver override method used on the GPU PCI Passthrough section is usually ineffective when comes to USB PCI devices as it usually requires kernel drivers compiled within the kernel (like `xhci_hcd`) instead of modules that can be enable/disable. This of course, is troublesome as it prevents our override scripts and configuration from working.
+The vfio-pci driver override method used on the [GPU PCI Passthrough guide](#gpu-pci-passthrough-guide "GPU PCI Passthrough guide") section is usually ineffective when comes to USB PCI devices as it usually requires kernel drivers compiled within the kernel (like `xhci_hcd`) instead of modules that can be enable/disable. This of course, is troublesome as it prevents our override scripts and configuration from working.
 
 Thankfully, we can bypass this limitation by using `driverctl`and setting the driver override on the fly which unbind the USB PCI device's driver and bind it back using `vfio-pci` or any other we would like, for example, let's say we want to passthrough this USB PCIe device:
 
