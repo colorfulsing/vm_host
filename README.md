@@ -156,6 +156,14 @@ modprobe -i vfio-pc
 ln -s /usr/sbin/vfio-pci-override.sh /usr/lib/dracut/modules.d/30vfio/vfio-pci-override.sh
 ```
 
+/etc/modprobe.d/vfio.conf
+
+```bash
+install vfio-pci /usr/sbin/vfio-pci-override.sh; /sbin/modprobe --ignore-install vfio-pci
+
+options vfio-pci disable_vga=1
+```
+
 /etc/dracut.conf.d/vfio.conf
 
 ```bash
