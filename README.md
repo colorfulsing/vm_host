@@ -86,7 +86,7 @@ Here are some good guides and reading material to increase your knowledge and al
 * Fedora 33 with GPU passthrough - [wendell's guide](https://forum.level1techs.com/t/fedora-33-ultimiate-vfio-guie-for-2020-2021-wip/163814 "wendell's Fedora 33: Ultimiate VFIO Guie for 2020/2021 [WIP]").
 * LVM stuff - [Travis Johnson's LVM storage guide](https://bashtheshell.com/guide/configuring-lvm-storage-for-qemukvm-vms-using-virt-manager-on-centos-7/ "Travis Johnson's Configuring LVM Storage for QEMU/KVM VMs Using virt-manager on CentOS 7")
 
-### My Fedora PCI passthrough guide
+### GPU PCI passthrough guide
 
 We will need several things for PCI passthrough, one of those important things is to make sure that the PCI device we want to passthrough is on it's own IOMMU group, or in case there are more PCI devices on the same group, to be 100% sure we want to passthrough those devices too as you can only pass a IOMMU group as a whole.
 
@@ -101,7 +101,9 @@ IOMMU Group 8:
         01:00.1 Audio device [0403]: NVIDIA Corporation Device [10de:10fa] (rev a1)
 ```
 
-Take note over both vendor and product IDs as we will need to override those on the grub params to make it work, for this example, the values are `10de:1f82` for the video device and `10de:10fa` for the audio device, as well as the device IDs that we will use to override the driver a bit later on the guide, those wold be `01:00.0` for video device and `01:00.1` for audio device. Repeat for as many PCI devices you want to passthrough.
+Take note over both vendor and product IDs as we will need to override those on the grub params to make it work, for this example, the values are `10de:1f82` for the video device and `10de:10fa` for the audio device, as well as the device IDs that we will use to override the driver a bit later on the guide, those wold be `01:00.0` for video device and `01:00.1` for audio device.
+
+>**IMPORTANT**: IOMMU groups rules applies. You have to pass all devices on the same IOMMU group.
 
 Now add the IOMMU grub parameters according to your CPU and system configuration:
 
@@ -141,7 +143,7 @@ chmod +x /usr/lib/dracut/modules.d/module-setup.sh
 
 Now let's create `/usr/sbin/vfio-pci-override.sh` to override the PCI devices's driver we want to passthrough. Remember that you should pass the whole IOMMU group not just the devices you want.
 
-To do this, we need to use the device IDs we extracted before using `check-iommu.sh` script (`01:00.0` for video device and `01:00.1` for audio device, also any other PCI device you would like to passthrough) and add it to `DEVS` variable at `/usr/sbin/vfio-pci-override.sh` script and add `0000` as prefix:
+To do this, we need to use the device IDs we extracted before using `check-iommu.sh` script (`01:00.0` for video device and `01:00.1` for audio device) and add it to `DEVS` variable at `/usr/sbin/vfio-pci-override.sh` script and add `0000` as prefix:
 
 ```sh
 #!/bin/sh
@@ -157,7 +159,7 @@ fi
 modprobe -i vfio-pci
 ```
 
-Notice that these values usually use `0000` as prefix, but you can check `/sys/bus/pci/devices` just to be sure this is the right prefix, otherwise, change it to whatever it is.
+>**Note:** Notice that these values usually use `0000` as prefix, but you can check `/sys/bus/pci/devices` just to be sure this is the right prefix, otherwise, change it to whatever it is.
 
 Make sure that `/usr/sbin/vfio-pci-override.sh` is executable:
 
@@ -224,7 +226,49 @@ $ lspci -nnk | grep -B2 vfio
         Kernel driver in use: vfio-pci
 ```
 
-### Kernel with ACS patch
+## USB PCI Passthrough
+
+The vfio-pci driver override method used on the GPU PCI Passthrough section is usually ineffective when comes to USB PCI devices as it usually requires kernel drivers compiled within the kernel (like `xhci_hcd`) instead of modules that can be enable/disable. This of course, is troublesome as it prevents our override scripts and configuration from working.
+
+Thankfully, we can bypass this limitation by using `driverctl`and setting the driver override on the fly which unbind the USB PCI device's driver and bind it back using `vfio-pci` or any other we would like, for example, let's say we want to passthrough this USB PCIe device:
+
+```bash
+$ ./check-iommu.sh | grep -B1 VIA
+IOMMU Group 16:
+        05:00.0 USB controller [0c03]: VIA Technologies, Inc. VL805 USB 3.0 Host Controller [1106:3483] (rev 01)
+````
+
+Take note of the device ID, we will need it to use `driverctl`, on this example, the ID is `05:00.0`.
+
+>**IMPORTANT**: IOMMU groups rules applies on this kind of passthrough too. You have to pass all devices on the same IOMMU group.
+
+Now we install `driverctl` CLI utility:
+
+```bash
+dnf install driverctl
+```
+
+And finallly set all devices on the same IOMMU group to use `vfio-pci` driver like this:
+
+```bash
+$ driverctl -v set-override 0000:05:00.0 vfio-pci
+driverctl: setting driver override for 0000:05:00.0: vfio-pci
+driverctl: loading driver vfio-pci
+driverctl: unbinding previous driver xhci_hcd
+driverctl: reprobing driver for 0000:05:00.0
+driverctl: saving driver override for 0000:05:00.0
+```
+
+Once this is done, the overrides will be applied inmediatly and also persists on reboot. All that is left is to verify that the override worked as expected:
+
+```bash
+$ lspci -nnk | grep -A2 '05:00.0'
+05:00.0 USB controller [0c03]: VIA Technologies, Inc. VL805 USB 3.0 Host Controller [1106:3483] (rev 01)
+        Subsystem: VIA Technologies, Inc. VL805 USB 3.0 Host Controller [1106:3483]
+        Kernel driver in use: vfio-pci
+```
+
+## Kernel with ACS patch
 
 We need a kernel with ACS patch applied in order to isolate PCI devices into it's own IOMMU group and be able to passthrough these devices into the VM, like a graphics card and a PCI to USB extender to setup a gaming VM.
 
@@ -240,13 +284,13 @@ Using `downstream` value on `pcie_acs_override` parameter should be more than en
 
 > **IMPORTANT:** Make sure you understand the [potential risks](https://vfio.blogspot.com/2014/08/iommu-groups-inside-and-out.html "IOMMU groups inside and out") of overriding the IOMMU groups before playing with this.
 
-#### Using jlay Fedora kernel repository
+### Using jlay Fedora kernel repository
 
 `jlay` have a really good and complete step by step guide on his Fedora copr repository page, which I totally recommend to [check it out](https://copr.fedorainfracloud.org/coprs/jlay/kernel-acsfsync/ "jlay's Fedora copr repository page"). But, I know some of us like headless stuff so [here](https://github.com/colorfulsing/vm_host/blob/main/jlay_copr_copy_paste.md "jlay's copy and paste step by step guide") is a copy and paste version stored on this git repository as of January 3, 2021.
 
 You can also find his `build-kernel` ansible playbook on his repository [here](https://git.jlay.dev/jlay/build-kernel "jlay's build-kernel ansible playbook repository").
 
-#### Recompile the kernel using docker
+### Recompile the kernel using docker
 
 Easiest way to recompile kernel and build fresh Fedora RPM packages.
 
@@ -270,7 +314,7 @@ MY_KERNEL_VERSION="$(dnf list installed "kernel.x86_64" | grep -Eo '  [0-9][^ ]+
 docker run --rm -it -v /mnt:/rpms colorfulsing/acs_fedora_33 "${MY_KERNEL_VERSION}"
 ```
 
-#### Recompile the kernel manually
+### Recompile the kernel manually
 
 Check this [script](https://github.com/colorfulsing/build_fedora_kernel/blob/main/acs-override-script-fedora33.sh "acs-override-script-fedora33.sh") created by [`dglb99`](https://forum.level1techs.com/u/dglb99 "dglb99") and modified by me. It is a step by step script to compile Fedora's kernel with ACS patch that has been modified by me to provide the following:
 
