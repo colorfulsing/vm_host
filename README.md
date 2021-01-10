@@ -73,11 +73,11 @@ sudo mount -a
 
 And done, now you can share your files between your Host and Guest VM.
 
-## PCIe Passthrough
+## PCI Passthrough
 
 ### Good stuff to read about
 
-Here are some good guides and reading material to increase your knowledge and also to take a look over other ways to make the PCIe passthrough and some other stuff:
+Here are some good guides and reading material to increase your knowledge and also to take a look over other ways to make the PCI passthrough and some other stuff:
 
 * General PCI Passthrough - [Arch linux's PCI passthrough via OVMF](https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF "Arch linux's PCI passthrough via OVMF")
 * Single GPU passthrough guide - [Karuri's vfio guide](https://gitlab.com/Karuri/vfio "Karuri's VFIO Single GPU Passthrough Configuration"). *(Totally recommend you to read this one)*
@@ -88,7 +88,7 @@ Here are some good guides and reading material to increase your knowledge and al
 
 ### My Fedora PCIe passthrough guide
 
-We will need several things for PCIe passthrough, one of those important things is to make sure that the PCIe device we want to passthrough is on it's own IOMMU group, or in case there are more PCIe devices on the same group, to be 100% sure we want to passthrough those devices too as you can only pass a IOMMU group as a whole.
+We will need several things for PCI passthrough, one of those important things is to make sure that the PCI device we want to passthrough is on it's own IOMMU group, or in case there are more PCI devices on the same group, to be 100% sure we want to passthrough those devices too as you can only pass a IOMMU group as a whole.
 
 Therefore, in case it is impossible to pass all devices on the IOMMU group because it would affect the host stability, or we simply are not happy with passing all devices on the IOMMU group, we can also use [ACS patch](https://aur.archlinux.org/cgit/aur.git/tree/add-acs-overrides.patch?h=linux-vfio "ACS patch") to split the specific devices we want into it's own IOMMU group. If this is the case, check the [Kernel with ACS patch](#kernel-with-acs-patch "Kernel with ACS patch") section.
 
@@ -101,20 +101,23 @@ IOMMU Group 8:
         01:00.1 Audio device [0403]: NVIDIA Corporation Device [10de:10fa] (rev a1)
 ```
 
+Take note over both vendor and product IDs as we will need to override those on the grub params to make it work, for this example, the values are `10de:1f82` for the video device and `10de:10fa` for the audio device, as well as the device IDs that we will use to override the driver a bit later on the guide, those wold be `01:00.0` for video device and `01:00.1` for audio device. Repeat for as many PCIe devices you want to passthrough.
+
 Now add the IOMMU grub parameters according to your CPU and system configuration:
 
 * `intel_iommu=on` for **Intel CPUs** (VT-d) or `amd_iommu=on` for **AMD CPUs** (AMD-Vi).
 * `iommu=pt` to prevent Linux from touching devices which cannot be passed through.
 * `pcie_acs_override=downstream` only when using a kernel with ACS patch.
 * `rd.driver.pre=vfio-pc` to force VFIO kernel module to load.
+* `vfio-pci.ids` PCI devices' vendor and product IDs to passhtrough.
 
-For example, when using `Fedora 33 + UEFI + AMD CPU + ACS override` then the grub parameters on my `/etc/default/grub` would be:
+For example, when using `Fedora 33 + UEFI + AMD CPU + ACS override` and the NVIDIA GPU vendor and product IDs from before, then the grub parameters to add on `/etc/default/grub` (UEFI grup file location, check `/etc/sysconfig/grub` instead if using BIOS) would be:
 
 ```bash
-GRUB_CMDLINE_LINUX="rhgb quiet iommu=pt amd_iommu=on pcie_acs_override=downstream rd.driver.pre=vfio-pci"
+GRUB_CMDLINE_LINUX="rhgb quiet iommu=pt amd_iommu=on pcie_acs_override=downstream rd.driver.pre=vfio-pci vfio-pci.ids=10de:1f82,10de:10fa"
 ```
 
-/usr/lib/dracut/modules.d/module-setup.sh
+Next, create `/usr/lib/dracut/modules.d/module-setup.sh` file to provide dracut with the module setup functions:
 
 ```bash
 #!/usr/bin/bash
@@ -130,33 +133,46 @@ install() {
 }
 ```
 
+Make sure that `/usr/lib/dracut/modules.d/module-setup.sh` is executable:
+
 ```bash
-mkdir /usr/lib/dracut/modules.d/20vfi
+chmod +x /usr/lib/dracut/modules.d/module-setup.sh
 ```
 
-These values usually use a `0000` prefix, but you can check `/sys/bus/pci/devices` just to be sure this is the right prefix, otherwise, change it to whatever it is.
+Now let's create `/usr/sbin/vfio-pci-override.sh` to override the PCI devices's driver we want to passthrough. Remember that you should pass the whole IOMMU group not just the devices you want.
 
-0000:01:00.0 0000:01:00.1
-
-/usr/sbin/vfio-pci-override.sh
+To do this, we need to use the device IDs we extracted before using `check-iommu.sh` script (`01:00.0` for video device and `01:00.1` for audio device, also any other PCI device you would like to passthrough) and add it to `DEVS` variable at `/usr/sbin/vfio-pci-override.sh` script and add `0000` as prefix:
 
 ```sh
 #!/bin/sh
 PREREQS=""
 DEVS="0000:01:00.0 0000:01:00.1"
 
-for DEV in $DEVS; do
-  echo "vfio-pci" > /sys/bus/pci/devices/$DEV/driver_override
-done
+if [ ! -z "$(ls -A /sys/class/iommu)" ]; then
+    for DEV in $DEVS; do
+        echo "vfio-pci" > /sys/bus/pci/devices/$DEV/driver_override
+    done
+fi
 
-modprobe -i vfio-pc
+modprobe -i vfio-pci
 ```
 
+Notice that these values usually use `0000` as prefix, but you can check `/sys/bus/pci/devices` just to be sure this is the right prefix, otherwise, change it to whatever it is.
+
+Make sure that `/usr/sbin/vfio-pci-override.sh` is executable:
+
 ```bash
+chmod +x /usr/sbin/vfio-pci-override.sh
+```
+
+Next, add a symbolic link to provide `vfio-pci-override.sh` as a dracut module within the correct order, as we need to make sure that it executes before any other driver does. To do this, we add `20` to the directory name to ensure the correct execution order:
+
+```bash
+mkdir /usr/lib/dracut/modules.d/20vfio
 ln -s /usr/sbin/vfio-pci-override.sh /usr/lib/dracut/modules.d/30vfio/vfio-pci-override.sh
 ```
 
-/etc/modprobe.d/vfio.conf
+Next step is to enable `vfio-pci` driver, module and it's related grub options by creating a new module configuration file on `/etc/modprobe.d/vfio.conf`:
 
 ```bash
 install vfio-pci /usr/sbin/vfio-pci-override.sh; /sbin/modprobe --ignore-install vfio-pci
@@ -164,7 +180,7 @@ install vfio-pci /usr/sbin/vfio-pci-override.sh; /sbin/modprobe --ignore-install
 options vfio-pci disable_vga=1
 ```
 
-/etc/dracut.conf.d/vfio.conf
+We also need to ensure that dracut loads all `vfio` related drivers and modules, along our `vfio-pci-override.sh` to ensure it will override the driver settings of the PCIe devices we want to passthrough. To do this, let's create `/etc/dracut.conf.d/vfio.conf` file:
 
 ```bash
 dd_dracutmodules+=" vfio "
@@ -172,16 +188,41 @@ force_drivers+=" vfio vfio-pci vfio_virqfd vfio_iommu_type1 "
 install_items="/usr/sbin/vfio-pci-override.sh /usr/bin/find /usr/bin/dirname"
 ```
 
+And finally, we rebuild both `initramfs` and `grub` configuration file:
+
 ```bash
 dracut -fv
 grub2-mkconfig -o /boot/efi/EFI/fedora/grub.cfg
 ```
 
+Now you just need to reboot and check that everthing is okay.
+
+Check for `initramfs` to include `vfio` module and drivers:
+
 ```bash
-sudo lsinitrd | grep vfio
+$ lsinitrd | grep vfio
+-rw-r--r--   1 root     root          122 Oct 23 09:30 etc/modprobe.d/vfio.conf
+drwxr-xr-x   3 root     root            0 Oct 23 09:30 usr/lib/modules/5.9.16-200.fc33.x86_64/kernel/drivers/vfio
+drwxr-xr-x   2 root     root            0 Oct 23 09:30 usr/lib/modules/5.9.16-200.fc33.x86_64/kernel/drivers/vfio/pci
+-rw-r--r--   1 root     root        29632 Oct 23 09:30 usr/lib/modules/5.9.16-200.fc33.x86_64/kernel/drivers/vfio/pci/vfio-pci.ko.xz
+-rw-r--r--   1 root     root        15704 Oct 23 09:30 usr/lib/modules/5.9.16-200.fc33.x86_64/kernel/drivers/vfio/vfio_iommu_type1.ko.xz
+-rw-r--r--   1 root     root        12880 Oct 23 09:30 usr/lib/modules/5.9.16-200.fc33.x86_64/kernel/drivers/vfio/vfio.ko.xz
+-rw-r--r--   1 root     root         3216 Oct 23 09:30 usr/lib/modules/5.9.16-200.fc33.x86_64/kernel/drivers/vfio/vfio_virqfd.ko.xz
+-rwxr-xr-x   1 root     root          241 Oct 23 09:30 usr/sbin/vfio-pci-override.sh
 ```
 
-TODO: Add step by step passthrough setup here
+Check for devices' driver override and `vfio-pci` driver usage (it should list all the PCI devices you passthrough):
+
+```bash
+$ lspci -nnk | grep -B2 vfio
+01:00.0 VGA compatible controller [0300]: NVIDIA Corporation TU117 [GeForce GTX 1650] [10de:1f82] (rev a1)
+        Subsystem: ZOTAC International (MCO) Ltd. Device [19da:1546]
+        Kernel driver in use: vfio-pci
+--
+01:00.1 Audio device [0403]: NVIDIA Corporation Device [10de:10fa] (rev a1)
+        Subsystem: ZOTAC International (MCO) Ltd. Device [19da:1546]
+        Kernel driver in use: vfio-pci
+```
 
 ### Kernel with ACS patch
 
