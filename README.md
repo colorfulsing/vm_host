@@ -86,7 +86,7 @@ Here are some good guides and reading material to increase your knowledge and al
 * Fedora 33 with GPU passthrough - [wendell's guide](https://forum.level1techs.com/t/fedora-33-ultimiate-vfio-guie-for-2020-2021-wip/163814 "wendell's Fedora 33: Ultimiate VFIO Guie for 2020/2021 [WIP]").
 * LVM stuff - [Travis Johnson's LVM storage guide](https://bashtheshell.com/guide/configuring-lvm-storage-for-qemukvm-vms-using-virt-manager-on-centos-7/ "Travis Johnson's Configuring LVM Storage for QEMU/KVM VMs Using virt-manager on CentOS 7")
 
-### My Fedora PCIe passthrough guide
+### My Fedora PCI passthrough guide
 
 We will need several things for PCI passthrough, one of those important things is to make sure that the PCI device we want to passthrough is on it's own IOMMU group, or in case there are more PCI devices on the same group, to be 100% sure we want to passthrough those devices too as you can only pass a IOMMU group as a whole.
 
@@ -101,7 +101,7 @@ IOMMU Group 8:
         01:00.1 Audio device [0403]: NVIDIA Corporation Device [10de:10fa] (rev a1)
 ```
 
-Take note over both vendor and product IDs as we will need to override those on the grub params to make it work, for this example, the values are `10de:1f82` for the video device and `10de:10fa` for the audio device, as well as the device IDs that we will use to override the driver a bit later on the guide, those wold be `01:00.0` for video device and `01:00.1` for audio device. Repeat for as many PCIe devices you want to passthrough.
+Take note over both vendor and product IDs as we will need to override those on the grub params to make it work, for this example, the values are `10de:1f82` for the video device and `10de:10fa` for the audio device, as well as the device IDs that we will use to override the driver a bit later on the guide, those wold be `01:00.0` for video device and `01:00.1` for audio device. Repeat for as many PCI devices you want to passthrough.
 
 Now add the IOMMU grub parameters according to your CPU and system configuration:
 
@@ -180,7 +180,7 @@ install vfio-pci /usr/sbin/vfio-pci-override.sh; /sbin/modprobe --ignore-install
 options vfio-pci disable_vga=1
 ```
 
-We also need to ensure that dracut loads all `vfio` related drivers and modules, along our `vfio-pci-override.sh` to ensure it will override the driver settings of the PCIe devices we want to passthrough. To do this, let's create `/etc/dracut.conf.d/vfio.conf` file:
+We also need to ensure that dracut loads all `vfio` related drivers and modules, along our `vfio-pci-override.sh` to ensure it will override the driver settings of the PCI devices we want to passthrough. To do this, let's create `/etc/dracut.conf.d/vfio.conf` file:
 
 ```bash
 dd_dracutmodules+=" vfio "
@@ -226,7 +226,7 @@ $ lspci -nnk | grep -B2 vfio
 
 ### Kernel with ACS patch
 
-We need a kernel with ACS patch applied in order to isolate PCIe devices into it's own IOMMU group and be able to passthrough these devices into the VM, like a graphics card and a PCIe to USB extender to setup a gaming VM.
+We need a kernel with ACS patch applied in order to isolate PCI devices into it's own IOMMU group and be able to passthrough these devices into the VM, like a graphics card and a PCI to USB extender to setup a gaming VM.
 
 There are several ways to acquire a kernel with ACS patch, but these ones that I found useful are:
 
