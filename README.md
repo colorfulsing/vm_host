@@ -335,3 +335,62 @@ You can either open the script as text to execute each command individually for 
 MY_KERNEL_VERSION="$(dnf list installed "kernel.x86_64" | grep -Eo '  [0-9][^ ]+' | grep -Eo '[^ ]+' | head -n 1)"
 ./acs-override-script-fedora33.sh "$MY_KERNEL_VERSION"
 ```
+
+## How to create a network bridge
+
+First check what is the current hardware interface it is usually called something like enp0s0
+
+```bash
+$ ip a
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: enp5s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq master br0 state UP group default qlen 1000
+    link/ether b4:2e:99:f1:ed:a0 brd ff:ff:ff:ff:ff:ff
+```
+
+On this example the hardware interface is called `enp5s0`.
+
+Now create new host connection interface, it will be used as master of the bridge (use the bridge)
+
+```bash
+$ nmcli conn add type bridge con-name br0 ifname br0
+```
+
+Then create bidge using hardware interface `enp5s0` (remember that it may change on each computer)
+
+```bash
+$ nmcli conn add type ethernet slave-type bridge con-name bridge-br0 ifname enp5s0 master br0
+```
+
+Bring new host connection internface up
+
+```bash
+$ nmcli conn up br0
+```
+
+Shutdown old host connection internface so the bridge can use the hardware interface
+
+```bash
+$ nmcli conn down "wired"
+```
+
+### Configure bridge's DNS to cloudflare
+
+Setup cloudflare's IPv4 and IPv6 DNS on the new host connecition interface
+
+```bash
+$ nmcli connection modify br0 ipv4.dns "1.1.1.1,1.0.0.1"
+$ nmcli connection modify br0 ipv4.ignore-auto-dns "yes"
+$ nmcli connection modify br0 ipv6.dns "2606:4700:4700::1111,2606:4700:4700::1001"
+$ nmcli connection modify br0 ipv6.ignore-auto-dns "yes"
+```
+
+And finally check that the configuration is okay
+
+```bash
+$ nmcli connection show br0 
+```
