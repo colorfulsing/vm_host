@@ -439,6 +439,7 @@ hugetlbfs /dev/hugepages hugetlbfs mode=01770,gid=kvm 0 0
 ```
 
 > **NOTE<sup>1</sup>:** Notice the `gid=kvm` which is our `kvm` group, you can change it to it's numeric `gid` but I would recommend you to use the `kvm` as it may change depending on your distro.
+
 > **NOTE<sup>2</sup>:** `/dev/hugepages` might change depending on your distro, or don't even exists if hugepages is not implemented. You can create `/dev/hugepages` if it doesn't exists.
 
 Next we need to calculate how many hugepages we will need, to do this, we need first to find out what is our hugepage size by checking `/proc/meminfo` utility
