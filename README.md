@@ -432,7 +432,24 @@ Here are the downsides of each just so you know:
 * Allocating memory huge pages on boot time is really easy, but it has the downside or reserving the RAM for the VMs leaving this ram unvailable for the host.
 * Allocating memory huge pages on runtime is tricky but with the advantage that the host will enjoy all the RAM while the VM is not in use.
 
-To allocate memory huge pages on boot time, we first need to create a mount point on our `/etc/fstab` file and assign it to the kvm user like this
+#### Create Hugepages mount point
+
+To allocate memory huge pages on boot time, we first need to check if hugepages is already mounted
+
+```bash
+$ mount | grep hugetlbfs
+hugetlbfs on /dev/hugepages type hugetlbfs (rw,relatime,seclabel,pagesize=2M)
+```
+
+if you got a mount rule, the you can skip this section.
+
+Else, if **you didn't got any mount rule with the previous command**, then you need to first create the `/dev/hugepages` directory
+
+```bash
+$ mkdir /dev/hugepages
+```
+
+Next, add the following rule to your `/etc/fstab` file and assign it to the `kvm` user like this
 
 ```
 hugetlbfs /dev/hugepages hugetlbfs mode=01770,gid=kvm 0 0
@@ -441,6 +458,14 @@ hugetlbfs /dev/hugepages hugetlbfs mode=01770,gid=kvm 0 0
 > **NOTE<sup>1</sup>:** Notice the `gid=kvm` which is our `kvm` group, you can change it to it's numeric `gid` but I would recommend you to use the `kvm` as it may change depending on your distro.
 
 > **NOTE<sup>2</sup>:** `/dev/hugepages` might change depending on your distro, or don't even exists if hugepages is not implemented. You can create `/dev/hugepages` if it doesn't exists.
+
+And finally, add the rule to your `qemu` configuration file, usually located at `/etc/libvirt/qemu.conf`
+
+```
+hugetlbfs_mount = "/dev/hugepages"
+```
+
+#### Allocating Hugepages on boot
 
 Next we need to calculate how many hugepages we will need, to do this, we need first to find out what is our hugepage size by checking `/proc/meminfo` utility
 
