@@ -394,3 +394,92 @@ And finally check that the configuration is okay
 ```bash
 $ nmcli connection show br0 
 ```
+
+## Performance tunning
+
+In order to get the best performance on our VMs, we need to change a few settings to provide a big boost to it's performance in general. I will describe some of them that are quite useful when comes to a dedicated hypervisor PC.
+
+Alternatively, if you plan on have a kind of hybrid workstation + gaming VM, then you can check on [bryansteiner's GPU passthrough tutorial](https://github.com/bryansteiner/gpu-passthrough-tutorial#----acs-override-patch-optional bryansteiner's GPU passthrough tutorial) for several additional configurations to improve your gaming VM performance with dynamic resource allocation so you can have the best of both world on your PC.
+
+### CPU Governor
+
+The default governor is either `schedutil` (>= 5.10 kernel) or `powersave` (< 5.10 kernel), but these governors are not a good fit for a VM since the VM itself will try to handle the CPU load. To fix this, we can either set it as `performance` governor which will set all CPU to the maximum clock, or `ondemand` for a more dynamic approach with kind of the same results but with a less impact on CPU. I will use `ondemand` on this guide as it fits best my own preferences.
+
+There are several ways to set the default CPU governor from we can choose from:
+
+* GRUB option
+* `udev` rule
+* Userspace app like cpupower
+
+I recommend you to use `udev` rule to avoid race conditions and also to be able to easy change it or rollback in case it doesn't fit your needs.
+
+Create a `udev` file at `/etc/udev/rules.d/50-scaling-governor.rules` to change the CPU governor to `ondemand`
+
+```
+SUBSYSTEM=="module", ACTION=="add", KERNEL=="acpi_cpufreq", RUN+="/bin/sh -c 'echo ondemand > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor'"
+```
+
+Finally, reboot to apply the changes.
+
+### Memory Hugepages
+
+Hugepages are quite useful to provide our VMs with lots of memory while easing it's allocation overhead, which improves our VMs performance.
+
+You can either allocate it during boot time or on runtime, both having their upsides and downsides. We will use `huge pages on boot time` on this tutorial as this is a dedicated host.
+
+Here are the downsides of each just so you know:
+
+* Allocating memory huge pages on boot time is really easy, but it has the downside or reserving the RAM for the VMs leaving this ram unvailable for the host.
+* Allocating memory huge pages on runtime is tricky but with the advantage that the host will enjoy all the RAM while the VM is not in use.
+
+To allocate memory huge pages on boot time, we first need to create a mount point on our `/etc/fstab` file and assign it to the kvm user like this
+
+```
+hugetlbfs /dev/hugepages hugetlbfs mode=01770,gid=kvm 0 0
+```
+
+> **NOTE<sup>1</sup>:** Notice the `gid=kvm` which is our `kvm` group, you can change it to it's numeric `gid` but I would recommend you to use the `kvm` as it may change depending on your distro.
+> **NOTE<sup>2</sup>:** `/dev/hugepages` might change depending on your distro, or don't even exists if hugepages is not implemented. You can create `/dev/hugepages` if it doesn't exists.
+
+Next we need to calculate how many hugepages we will need, to do this, we need first to find out what is our hugepage size by checking `/proc/meminfo` utility
+
+```bash
+$ grep Hugepagesize /proc/meminfo
+Hugepagesize:       2048 kB
+```
+
+On my particular case, it is 2MB size and I need to allocate a total of 24576MB (or 24GB) for my PC so I will use that for this example, but you can use whatever memory size you want.
+
+So, by doing the math `24576 / 2 = 12288`, I will need `12288` hugepages total, however, it is usually a good idea to add a few more just in case the OS needs it, so let's round it up to `12350`.
+
+Now, before we enable this by default, it is a good idea to test it just to make sure everything works without issues, to do this, let's apply it on runtime
+
+```bash
+echo 12350 > /proc/sys/vm/nr_hugepages
+```
+
+And now let's check if the quantity is correct
+
+```bash
+$ grep HugePages_Total /proc/meminfo
+HugePages_Total:       12350
+```
+
+In case the number displayed by the previous command is smaller, try to close some applications as it the OS will try to allocate as much as it can within the free memory.
+
+Now that we know it is safe and it was allocated correctly, next step is to try your VM and check on the 
+
+```bash
+HugePages_Total:   12288
+HugePages_Free:       62
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+```
+
+> **NOTE:** You might need to specify the memory mount path param (`-mem-path`) when starting your VM for it to use it in case it is not your libvirt standard setting.
+
+Finally, now that we had make sure that our hugepages settings works, let's add the permanent setting by creating a `/etc/sysctl.d/40-hugepage.conf` file with the following contents
+
+```
+vm.nr_hugepages = 12350
+```
