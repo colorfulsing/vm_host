@@ -496,6 +496,7 @@ In case the number displayed by the previous command is smaller, try to close so
 Now that we know it is safe and it was allocated correctly, next step is to try your VM and check on the 
 
 ```bash
+$ grep HugePages /proc/meminfo
 HugePages_Total:   12288
 HugePages_Free:       62
 HugePages_Rsvd:        0
