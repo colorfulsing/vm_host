@@ -414,7 +414,7 @@ And finally restart the computer to apply the changes
 $ shutdown -r now
 ```
 
-### Remove bidge
+### Remove the bridge connection
 
 If for some reason your bridge stop working or you simple want to remove it, then first you need to remove the `slave-type` bridge we added before, it's name should be `bridge-br0`
 
