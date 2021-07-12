@@ -372,10 +372,16 @@ Bring new host connection internface up
 $ nmcli conn up br0
 ```
 
-Shutdown old host connection internface so the bridge can use the hardware interface
+Shutdown old host connection interface so the bridge can use the hardware interface, for this example we will assume the name of the interface is `wired`, but keep in mind that yours might be named `Wired connection 0` or something similar
 
 ```bash
 $ nmcli conn down "wired"
+```
+
+And finally restart the computer to apply the changes
+
+```bash
+$ shutdown -r now
 ```
 
 ### Configure bridge's DNS to cloudflare
@@ -389,10 +395,49 @@ $ nmcli connection modify br0 ipv6.dns "2606:4700:4700::1111,2606:4700:4700::100
 $ nmcli connection modify br0 ipv6.ignore-auto-dns "yes"
 ```
 
-And finally check that the configuration is okay
+Now check that the configuration is okay
 
 ```bash
-$ nmcli connection show br0 
+$ nmcli connection show br0
+```
+
+Then, flush the DNS cache and restart the DNS resolver service
+
+```bash
+$ sudo resolvectl flush-caches
+$ sudo systemctl restart systemd-resolved
+```
+
+And finally restart the computer to apply the changes
+
+```bash
+$ shutdown -r now
+```
+
+### Remove bidge
+
+If for some reason your bridge stop working or you simple want to remove it, then first you need to remove the `slave-type` bridge we added before, it's name should be `bridge-br0`
+
+```bash
+$ nmcli conn delete bridge-br0
+```
+
+Next remove the bridge itself
+
+```bash
+$ nmcli conn delete br0
+```
+
+Then bring the old host connectio interface up, just as before, we will assume the name of the interface is `wired` for this example, but keep in mind that yours might be named `Wired connection 0` or something similar
+
+```bash
+$ nmcli conn up "wired"
+```
+
+Finally, restart your computer for the changes to take effect
+
+```bash
+$ shutdown -r now
 ```
 
 ## Performance tunning
