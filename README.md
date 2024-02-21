@@ -1,4 +1,6 @@
-# Fedora 33 as host
+# Fedora as host
+
+The steps found on this guide have been tested on Fedora 33 and up to Fedora 39.
 
 ## Shared directories
 
