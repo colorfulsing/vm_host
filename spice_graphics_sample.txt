@@ -1,0 +1,6 @@
+<graphics type="spice" autoport="yes" passwd="mypass12345">
+  <listen type="address"/>
+  <image compression="auto_glz"/>
+  <streaming mode="filter"/>
+  <clipboard copypaste="no"/>
+</graphics>
