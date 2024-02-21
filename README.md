@@ -113,7 +113,7 @@ Now add the IOMMU grub parameters according to your CPU and system configuration
 * `rd.driver.pre=vfio-pc` to force VFIO kernel module to load.
 * `vfio-pci.ids` PCI devices' vendor and product IDs to passhtrough.
 
-For example, when using `Fedora 33 + UEFI + AMD CPU + ACS override` and the NVIDIA GPU vendor and product IDs from before, then the grub parameters to add on `/etc/default/grub` (UEFI grup file location, check `/etc/sysconfig/grub` instead if using BIOS) would be:
+For example, when using `Fedora 33 + UEFI + AMD CPU + ACS override` and the NVIDIA GPU vendor and product IDs from before, then the grub parameters to add on `/etc/default/grub` (UEFI grub file location, check `/etc/sysconfig/grub` instead if using BIOS) would be:
 
 ```bash
 GRUB_CMDLINE_LINUX="rhgb quiet iommu=pt amd_iommu=on pcie_acs_override=downstream rd.driver.pre=vfio-pci vfio-pci.ids=10de:1f82,10de:10fa"
@@ -182,11 +182,21 @@ install vfio-pci /usr/sbin/vfio-pci-override.sh; /sbin/modprobe --ignore-install
 options vfio-pci disable_vga=1
 ```
 
-We also need to ensure that dracut loads all `vfio` related drivers and modules, along our `vfio-pci-override.sh` to ensure it will override the driver settings of the PCI devices we want to passthrough. To do this, let's create `/etc/dracut.conf.d/vfio.conf` file:
+We also need to ensure that dracut loads all `vfio` related drivers and modules, along our `vfio-pci-override.sh` to ensure it will override the driver settings of the PCI devices we want to passthrough. To do this, let's create `/etc/dracut.conf.d/vfio.conf` file, however, this file contents will change depending on the kernel version you are using because of the built-in modules:
+
+Using kernel **< v6.0**:
 
 ```bash
 dd_dracutmodules+=" vfio "
 force_drivers+=" vfio vfio-pci vfio_virqfd vfio_iommu_type1 "
+install_items="/usr/sbin/vfio-pci-override.sh /usr/bin/find /usr/bin/dirname"
+```
+
+Using kernel **>= v6.0**:
+
+```bash
+dd_dracutmodules+=" vfio "
+force_drivers+=" vfio vfio-pci vfio_iommu_type1 "
 install_items="/usr/sbin/vfio-pci-override.sh /usr/bin/find /usr/bin/dirname"
 ```
 
@@ -554,4 +564,45 @@ Finally, now that we had make sure that our hugepages settings works, let's add 
 
 ```
 vm.nr_hugepages = 12350
+```
+
+## VM Suspend and Wake up
+
+List VM states:
+
+```bash
+virsh -c qemu:///system list --all
+```
+
+Wake up a `pmsuspended` VM (replace `[vm_name]` with your VM name):
+
+```bash
+virsh -c qemu:///system dompmwakeup [vm_name]
+```
+
+## Troubleshooting
+
+### Fix: Spice VDAgent not working on Wayland
+
+I found that when using `spice display` it `virt-viewer` stopped resizing along some other stuff. The problem was that the `spice-vdagent` wasn't running (not to be confused with `spice-vdagentd`), so we just need to create a `systemctl` user service at `~/.local/share/systemd/user/spice-vdagent.service`:
+
+```ini
+[Unit]
+Description=Agent daemon for Spice guests
+
+[Service]
+Type=simple
+ExecStart=/user/bin/spice-vdagent -x
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+And then enable it using `systemctl` in `user` mode like this (remember that these doesn't use `sudo` since it has to be executed as your user!):
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable spice-vdagent
+systemctl --user start spice-vdagent
 ```
