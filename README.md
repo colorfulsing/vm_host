@@ -594,7 +594,7 @@ Description=Agent daemon for Spice guests
 
 [Service]
 Type=simple
-ExecStart=/user/bin/spice-vdagent -x
+ExecStart=/usr/bin/spice-vdagent -x
 Restart=on-failure
 
 [Install]
